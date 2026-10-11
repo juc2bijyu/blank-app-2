@@ -40,7 +40,16 @@
 ## 4. 使用技術
 
 - **フロントエンド / ホスティング**: Streamlit (Streamlit Community Cloud)
-- **バックエンド API / データ中継**: Google Apps Script (GAS)
+## 3. データの記録方式
+
+- **バックエンドストレージ**: Google スプレッドシート
+  - `tasks` シート: 実際の実行タスク・実績ログ
+  - `template` シート: 毎週発生するルーティンタスクのマスターデータ
+
+
+![GAS設定画面のスクリーンショット](screenshot3.png)
+![GAS設定画面のスクリーンショット](screenshot2.png)
+  
 - **データベース**: Google スプレッドシート
 - **開発言語**: Python / JavaScript
 
