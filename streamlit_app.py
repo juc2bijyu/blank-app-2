@@ -2,31 +2,43 @@ import streamlit as st
 import requests
 import pandas as pd
 import re
+from datetime import datetime
+import zoneinfo
 
-# 画面を広く使う設定
 st.set_page_config(page_title="タスク・〆切管理", layout="wide")
-
 st.title("📋 タスク・〆切管理アプリ")
 
-# SecretsからGASのURLを取得
 if "GAS_URL" not in st.secrets:
     st.error("Secrets に GAS_URL が設定されていません。")
     st.stop()
 
 gas_url = st.secrets["GAS_URL"]
 
-# 時刻文字列を "10:30" 形式に正規化する関数
+# 時刻文字列を "HH:MM" 形式に確実に整える関数
 def format_to_hh_mm(val):
     if pd.isna(val) or val is None or str(val).strip() == "":
         return ""
     val_str = str(val).strip()
+
+    # 1899-12-29T15:00:00.000Z などのISO形式が含まれる場合、日本時間に変換
+    if "T" in val_str and "Z" in val_str:
+        try:
+            clean_str = val_str.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(clean_str)
+            dt_jst = dt.astimezone(zoneinfo.ZoneInfo("Asia/Tokyo"))
+            return dt_jst.strftime("%H:%M")
+        except Exception:
+            pass
+
+    # "10:30" や "9:30" などのパターンを抽出
     match = re.search(r"(\d{1,2}):(\d{2})", val_str)
     if match:
         h, m = match.groups()
         return f"{int(h):02d}:{m}"
+
     return val_str
 
-# データの読み込み関数
+# データの読み込み
 def load_data():
     try:
         response = requests.get(gas_url)
@@ -37,11 +49,11 @@ def load_data():
             
             df = pd.DataFrame(raw_data)
             
-            # 〆切時刻の列が存在する場合、"10:30" 形式に一括変換
+            # 〆切時刻を HH:MM 形式に整形
             if "deadline_time" in df.columns:
                 df["deadline_time"] = df["deadline_time"].apply(format_to_hh_mm)
             
-            # 日本語列名へのリネーム
+            # 列名変更
             rename_map = {
                 "id": "ID",
                 "day_of_week": "曜日",
@@ -50,7 +62,10 @@ def load_data():
             }
             df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
             
-            # 列の並び順を明示（IDを先頭に配置）
+            # IDを整数型に整える
+            if "ID" in df.columns:
+                df["ID"] = pd.to_numeric(df["ID"], errors="coerce").fillna(0).astype(int)
+            
             cols_order = [c for c in ["ID", "曜日", "〆切時刻", "内容"] if c in df.columns]
             return df[cols_order]
         return pd.DataFrame()
@@ -59,7 +74,7 @@ def load_data():
         return pd.DataFrame()
 
 # -------------------------------------------------------------
-# 1行にコンパクトに配置した入力フォーム
+# 1行配置フォーム
 # -------------------------------------------------------------
 with st.form("quick_input_form", clear_on_submit=True):
     col_day, col_time, col_content, col_btn = st.columns(
@@ -68,13 +83,13 @@ with st.form("quick_input_form", clear_on_submit=True):
     )
     
     with col_day:
-        day_input = st.text_input("曜日", placeholder="例: 月")
+        day_input = st.text_input("曜日", placeholder="例: 月曜日")
         
     with col_time:
         time_input = st.text_input("〆切時刻", placeholder="例: 10:30")
         
     with col_content:
-        content_input = st.text_input("内容", placeholder="例: 第3回 課題レポート提出")
+        content_input = st.text_input("内容", placeholder="例: 講義資料の提出")
         
     with col_btn:
         submitted = st.form_submit_button("登録", use_container_width=True)
@@ -100,7 +115,7 @@ with st.form("quick_input_form", clear_on_submit=True):
                     st.error("保存に失敗しました。")
 
 # -------------------------------------------------------------
-# 保存済みデータの一覧表示
+# 一覧表示
 # -------------------------------------------------------------
 st.divider()
 st.subheader("📌 登録済み一覧")
