@@ -34,7 +34,7 @@
 - **バックエンドストレージ**: Google スプレッドシート
   - `tasks` シート: 実際の実行タスク・実績ログ（ID、曜日、〆切時刻、内容、終了、種別、日付）
   - `template` シート: 毎週発生するルーティンタスクのマスターデータ
-<img src="screenshot2.png" width="40%">
+<img src="screenshot2.png" width="30%">
 <img src="screenshot3.png" width="60%">
 ---
 
