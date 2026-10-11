@@ -49,6 +49,8 @@ def load_data():
                     col_map[col] = "内容"
                 elif c_clean in ["終了", "status"]:
                     col_map[col] = "終了"
+                elif c_clean in ["毎週 / 単発", "毎週/単発", "recurrence"]:
+                    col_map[col] = "種別"
             
             df = df.rename(columns=col_map)
             
@@ -58,14 +60,14 @@ def load_data():
             if "ID" in df.columns:
                 df["ID"] = pd.to_numeric(df["ID"], errors="coerce").fillna(0).astype(int)
             
-            # E列「終了」が "OK" なら True に変換（チェックボックス用）
+            # E列「終了」が "OK" なら True に変換
             if "終了" in df.columns:
                 df["完了"] = df["終了"].str.strip() == "OK"
             else:
                 df["完了"] = False
             
-            # 列の表示順: [完了, ID, 曜日, 〆切時刻, 内容]
-            cols = ["完了", "ID", "曜日", "〆切時刻", "内容"]
+            # 列の表示順: [完了, ID, 曜日, 〆切時刻, 内容, 種別]
+            cols = ["完了", "ID", "曜日", "〆切時刻", "内容", "種別"]
             target_cols = [c for c in cols if c in df.columns]
             return df[target_cols]
         else:
@@ -76,11 +78,11 @@ def load_data():
         return pd.DataFrame()
 
 # -------------------------------------------------------------
-# 1行配置フォーム
+# 1行配置フォーム（登録ボタンの左に毎週/単発の選択欄を配置）
 # -------------------------------------------------------------
 with st.form("quick_input_form", clear_on_submit=True):
-    col_day, col_time, col_content, col_btn = st.columns(
-        [1.2, 1.3, 4.5, 1.0], 
+    col_day, col_time, col_content, col_type, col_btn = st.columns(
+        [1.1, 1.2, 4.0, 1.3, 1.0], 
         vertical_alignment="bottom"
     )
     
@@ -92,6 +94,9 @@ with st.form("quick_input_form", clear_on_submit=True):
         
     with col_content:
         content_input = st.text_input("内容", placeholder="例: 課題採点")
+
+    with col_type:
+        type_input = st.selectbox("種別", ["毎週", "単発"], index=0)
         
     with col_btn:
         submitted = st.form_submit_button("登録", use_container_width=True)
@@ -104,7 +109,8 @@ with st.form("quick_input_form", clear_on_submit=True):
             payload = {
                 "day_of_week": day_input,
                 "deadline_time": formatted_time,
-                "content": content_input
+                "content": content_input,
+                "recurrence": type_input
             }
             with st.spinner("保存中..."):
                 res = requests.post(gas_url, json=payload)
@@ -122,11 +128,10 @@ st.subheader("📌 登録済み一覧")
 df_data = load_data()
 
 if not df_data.empty:
-    # ユーザーが編集可能なテーブルとして表示（「完了」列のみ編集可能）
     edited_df = st.data_editor(
         df_data,
         hide_index=True,
-        disabled=["ID", "曜日", "〆切時刻", "内容"],  # 誤操作防止のためテキスト列はロック
+        disabled=["ID", "曜日", "〆切時刻", "内容", "種別"],
         use_container_width=True,
         key="task_editor"
     )
@@ -142,7 +147,6 @@ if not df_data.empty:
                 is_done = changes["完了"]
                 new_status = "OK" if is_done else ""
                 
-                # GASに更新リクエストを送信
                 update_payload = {
                     "action": "update_status",
                     "id": target_id,
@@ -152,7 +156,6 @@ if not df_data.empty:
                 with st.spinner("更新中..."):
                     requests.post(gas_url, json=update_payload)
                 
-                # 即時反映のため再読み込み
                 st.rerun()
 else:
     st.info("登録済みのデータはありません。")
