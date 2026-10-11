@@ -1,25 +1,51 @@
-# 🎈 Blank app template
+# タスク・〆切管理アプリ
 
-A simple Streamlit app template for you to modify!
+毎週発生するルーティンタスクおよび不定期な単発タスクの〆切を一元管理するためのWebアプリケーションです。
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://blank-app-template.streamlit.app/)
+---
 
-### How to run it on your own machine
+## 1. 目的
 
-Prerequisite: install `uv` if you don't already have it.
+毎週決まった曜日に発生するルーティンタスクの抜け漏れを防ぐとともに、時々発生する単発の仕事も柔軟に管理することを目的としています。
 
-```
-$ curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+![アプリ画面のスクリーンショット](screenshot.png)
 
-1. Sync the dependencies
+---
 
-   ```
-   $ uv sync
-   ```
+## 2. 主な機能
 
-2. Run the app
+- **毎週タスクの登録**
+  - 曜日・〆切時刻・内容を指定し、定期タスクとして登録可能
+- **単発タスクの登録**
+  - 不定期に発生する個別タスクを登録可能
+- **1週間分のタスク一括生成**
+  - 基準となる日曜日を指定することで、テンプレート（ひな形）から翌週分のタスクを自動計算して一括展開
+- **ワンクリック完了記録**
+  - 一覧上のチェックボックスをONにするだけで、即座に完了状態（OK）を記録
+- **タスク・〆切の自動ソート一覧表示**
+  - 日付および〆切時刻の早い順に自動整列して一覧表示
+- **過去の完了タスクの非表示フィルタ**
+  - 今日以前に完了したタスクは一覧から自動除外（未完了のタスクは過去分でもやり残し防止のため表示を維持）
 
-   ```
-   $ uv run streamlit run streamlit_app.py
-   ```
+---
+
+## 3. データの記録方式
+
+- **バックエンドストレージ**: Google スプレッドシート
+  - `tasks` シート: 実際の実行タスク・実績ログ（ID、曜日、〆切時刻、内容、終了、種別、日付）
+  - `template` シート: 毎週発生するルーティンタスクのマスターデータ
+
+---
+
+## 4. 使用技術
+
+- **フロントエンド / ホスティング**: Streamlit (Streamlit Community Cloud)
+- **バックエンド API / データ中継**: Google Apps Script (GAS)
+- **データベース**: Google スプレッドシート
+- **開発言語**: Python / JavaScript
+
+---
+
+## 5. 今後の拡張予定
+
+- 毎週日曜日に翌週分のタスクを自動生成するGASトリガー（定期バッチ実行）の実装
