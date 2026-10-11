@@ -51,6 +51,8 @@ def load_data():
                     col_map[col] = "終了"
                 elif c_clean in ["毎週 / 単発", "毎週/単発", "recurrence"]:
                     col_map[col] = "種別"
+                elif c_clean in ["日付", "date"]:
+                    col_map[col] = "日付"
             
             df = df.rename(columns=col_map)
             
@@ -66,8 +68,12 @@ def load_data():
             else:
                 df["完了"] = False
             
-            # 列の表示順: [完了, ID, 曜日, 〆切時刻, 内容, 種別]
-            cols = ["完了", "ID", "曜日", "〆切時刻", "内容", "種別"]
+            # 日付列が存在しない場合は空文字で作成
+            if "日付" not in df.columns:
+                df["日付"] = ""
+            
+            # 列の表示順: [完了, 日付, ID, 曜日, 〆切時刻, 内容, 種別]
+            cols = ["完了", "日付", "ID", "曜日", "〆切時刻", "内容", "種別"]
             target_cols = [c for c in cols if c in df.columns]
             return df[target_cols]
         else:
@@ -78,7 +84,7 @@ def load_data():
         return pd.DataFrame()
 
 # -------------------------------------------------------------
-# 1行配置フォーム（登録ボタンの左に毎週/単発の選択欄を配置）
+# 1行配置フォーム（日付入力はなし）
 # -------------------------------------------------------------
 with st.form("quick_input_form", clear_on_submit=True):
     col_day, col_time, col_content, col_type, col_btn = st.columns(
@@ -121,7 +127,7 @@ with st.form("quick_input_form", clear_on_submit=True):
                     st.error("保存に失敗しました。")
 
 # -------------------------------------------------------------
-# 一覧表示（インタラクティブなチェックボックス）
+# 一覧表示（IDの左に日付を表示）
 # -------------------------------------------------------------
 st.divider()
 st.subheader("📌 登録済み一覧")
@@ -131,12 +137,12 @@ if not df_data.empty:
     edited_df = st.data_editor(
         df_data,
         hide_index=True,
-        disabled=["ID", "曜日", "〆切時刻", "内容", "種別"],
+        disabled=["日付", "ID", "曜日", "〆切時刻", "内容", "種別"],
         use_container_width=True,
         key="task_editor"
     )
 
-    # チェックボックスの変更を即座に検知してGASへ送信
+    # チェックボックスの変更を検知してGASへ送信
     editor_state = st.session_state.get("task_editor", {})
     edited_rows = editor_state.get("edited_rows", {})
 
