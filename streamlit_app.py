@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 import re
 import pandas as pd
 import requests
@@ -38,7 +39,6 @@ def load_data():
 
             df = pd.DataFrame(raw_data)
 
-            # 列名マッピング
             col_map = {}
             for col in df.columns:
                 c_clean = str(col).strip()
@@ -59,11 +59,9 @@ def load_data():
 
             df = df.rename(columns=col_map)
 
-            # 〆切時刻を HH:MM 形式に統一
             if "〆切時刻" in df.columns:
                 df["〆切時刻"] = df["〆切時刻"].apply(format_to_hh_mm)
 
-            # IDを整数型に変換
             if "ID" in df.columns:
                 df["ID"] = (
                     pd.to_numeric(df["ID"], errors="coerce")
@@ -71,7 +69,6 @@ def load_data():
                     .astype(int)
                 )
 
-            # E列「終了」が "OK" なら True に変換
             if "終了" in df.columns:
                 df["完了"] = df["終了"].str.strip() == "OK"
             else:
@@ -80,11 +77,8 @@ def load_data():
             if "日付" not in df.columns:
                 df["日付"] = ""
 
-            # ---------------------------------------------------------
-            # 日付と〆切時刻の昇順で並び替え
-            # ---------------------------------------------------------
+            # 日付と〆切時刻の昇順でソート
             if "日付" in df.columns and "〆切時刻" in df.columns:
-                # 日付型として正確にソートできるように一時キーを作成
                 df["_sort_date"] = pd.to_datetime(df["日付"], errors="coerce")
                 df["_sort_time"] = df["〆切時刻"].fillna("")
                 df = df.sort_values(
@@ -92,12 +86,10 @@ def load_data():
                     ascending=[True, True],
                     na_position="last",
                 )
-                # 一時キーの削除とインデックスのリセット（チェックボックスずれ防止）
                 df = df.drop(columns=["_sort_date", "_sort_time"]).reset_index(
                     drop=True
                 )
 
-            # 列の表示順: [完了, 日付, ID, 曜日, 〆切時刻, 内容, 種別]
             cols = ["完了", "日付", "ID", "曜日", "〆切時刻", "内容", "種別"]
             target_cols = [c for c in cols if c in df.columns]
             return df[target_cols]
@@ -110,8 +102,58 @@ def load_data():
 
 
 # -------------------------------------------------------------
-# 1行配置フォーム
+# 1. テンプレートから来週分のタスクを生成するエリア
 # -------------------------------------------------------------
+with st.expander("📅 テンプレートから来週分を一括生成する", expanded=False):
+    # 今日から最も近い「次の日曜日」を初期値に計算
+    today = date.today()
+    days_ahead = (6 - today.weekday()) % 7  # 日曜日までの日数
+    if days_ahead == 0:
+        default_sunday = today
+    else:
+        default_sunday = today + timedelta(days=days_ahead)
+
+    col_date, col_gen_btn = st.columns([2.5, 1.5], vertical_alignment="bottom")
+
+    with col_date:
+        selected_sunday = st.date_input(
+            "週の基準となる日曜日を選択", value=default_sunday
+        )
+
+    with col_gen_btn:
+        generate_clicked = st.button(
+            "この週のタスクを生成", use_container_width=True
+        )
+
+    if generate_clicked:
+        # 選択された日付が本当に日曜日かチェック（月曜=0, ..., 日曜=6）
+        if selected_sunday.weekday() != 6:
+            st.warning("⚠️ 選択された日付は日曜日ではありません。日曜日を選択してください。")
+        else:
+            payload = {
+                "action": "generate_from_template",
+                "base_sunday": selected_sunday.strftime("%Y-%m-%d"),
+            }
+            with st.spinner("テンプレートから生成中..."):
+                res = requests.post(gas_url, json=payload)
+                if res.status_code == 200:
+                    data_res = res.json()
+                    if data_res.get("status") == "success":
+                        st.success(
+                            f"{selected_sunday.strftime('%Y/%m/%d')} 週のタスク（{data_res.get('count')}件）を生成しました！"
+                        )
+                        st.rerun()
+                    else:
+                        st.error(
+                            f"生成失敗: {data_res.get('message', '不明なエラー')}"
+                        )
+                else:
+                    st.error("通信エラーが発生しました。")
+
+# -------------------------------------------------------------
+# 2. 単発・追加用の1行配置フォーム
+# -------------------------------------------------------------
+st.write("#### ✏️ 個別タスク登録")
 with st.form("quick_input_form", clear_on_submit=True):
     col_day, col_time, col_content, col_type, col_btn = st.columns(
         [1.1, 1.2, 4.0, 1.3, 1.0], vertical_alignment="bottom"
@@ -129,7 +171,7 @@ with st.form("quick_input_form", clear_on_submit=True):
         )
 
     with col_type:
-        type_input = st.selectbox("種別", ["毎週", "単発"], index=0)
+        type_input = st.selectbox("種別", ["単発", "毎週"], index=0)
 
     with col_btn:
         submitted = st.form_submit_button("登録", use_container_width=True)
@@ -154,7 +196,7 @@ with st.form("quick_input_form", clear_on_submit=True):
                     st.error("保存に失敗しました。")
 
 # -------------------------------------------------------------
-# 一覧表示（日付と〆切時刻順にソート済み）
+# 3. 一覧表示（インタラクティブなチェックボックス）
 # -------------------------------------------------------------
 st.divider()
 st.subheader("📌 登録済み一覧")
@@ -176,7 +218,6 @@ if not df_data.empty:
     if edited_rows:
         for row_index, changes in edited_rows.items():
             if "完了" in changes:
-                # ソート後でも正しく該当行のIDを取得
                 target_id = int(df_data.iloc[row_index]["ID"])
                 is_done = changes["完了"]
                 new_status = "OK" if is_done else ""
