@@ -36,7 +36,6 @@ def load_data():
             
             df = pd.DataFrame(raw_data)
             
-            # 列名のマッピング（大文字小文字・日本語混在を吸収）
             col_map = {}
             for col in df.columns:
                 c_clean = str(col).strip()
@@ -48,18 +47,26 @@ def load_data():
                     col_map[col] = "〆切時刻"
                 elif c_clean in ["内容", "content"]:
                     col_map[col] = "内容"
+                elif c_clean in ["終了", "status"]:
+                    col_map[col] = "終了"
             
             df = df.rename(columns=col_map)
             
-            # 〆切時刻を HH:MM 形式に統一
             if "〆切時刻" in df.columns:
                 df["〆切時刻"] = df["〆切時刻"].apply(format_to_hh_mm)
             
-            # IDを正しく整数型に変換
             if "ID" in df.columns:
                 df["ID"] = pd.to_numeric(df["ID"], errors="coerce").fillna(0).astype(int)
             
-            target_cols = [c for c in ["ID", "曜日", "〆切時刻", "内容"] if c in df.columns]
+            # E列「終了」が "OK" なら True に変換（チェックボックス用）
+            if "終了" in df.columns:
+                df["完了"] = df["終了"].str.strip() == "OK"
+            else:
+                df["完了"] = False
+            
+            # 列の表示順: [完了, ID, 曜日, 〆切時刻, 内容]
+            cols = ["完了", "ID", "曜日", "〆切時刻", "内容"]
+            target_cols = [c for c in cols if c in df.columns]
             return df[target_cols]
         else:
             st.error(f"ステータスコードエラー: {response.status_code}")
@@ -94,17 +101,11 @@ with st.form("quick_input_form", clear_on_submit=True):
             st.warning("すべての項目を入力してください。")
         else:
             formatted_time = format_to_hh_mm(time_input)
-            
-            # スプレッドシート側のヘッダー（日本語・英語どちらでも届くように設定）
             payload = {
                 "day_of_week": day_input,
                 "deadline_time": formatted_time,
-                "content": content_input,
-                "曜日": day_input,
-                "〆切時刻": formatted_time,
-                "内容": content_input
+                "content": content_input
             }
-            
             with st.spinner("保存中..."):
                 res = requests.post(gas_url, json=payload)
                 if res.status_code == 200:
@@ -114,13 +115,44 @@ with st.form("quick_input_form", clear_on_submit=True):
                     st.error("保存に失敗しました。")
 
 # -------------------------------------------------------------
-# 一覧表示
+# 一覧表示（インタラクティブなチェックボックス）
 # -------------------------------------------------------------
 st.divider()
 st.subheader("📌 登録済み一覧")
 df_data = load_data()
 
 if not df_data.empty:
-    st.dataframe(df_data, use_container_width=True, hide_index=True)
+    # ユーザーが編集可能なテーブルとして表示（「完了」列のみ編集可能）
+    edited_df = st.data_editor(
+        df_data,
+        hide_index=True,
+        disabled=["ID", "曜日", "〆切時刻", "内容"],  # 誤操作防止のためテキスト列はロック
+        use_container_width=True,
+        key="task_editor"
+    )
+
+    # チェックボックスの変更を即座に検知してGASへ送信
+    editor_state = st.session_state.get("task_editor", {})
+    edited_rows = editor_state.get("edited_rows", {})
+
+    if edited_rows:
+        for row_index, changes in edited_rows.items():
+            if "完了" in changes:
+                target_id = int(df_data.iloc[row_index]["ID"])
+                is_done = changes["完了"]
+                new_status = "OK" if is_done else ""
+                
+                # GASに更新リクエストを送信
+                update_payload = {
+                    "action": "update_status",
+                    "id": target_id,
+                    "status": new_status
+                }
+                
+                with st.spinner("更新中..."):
+                    requests.post(gas_url, json=update_payload)
+                
+                # 即時反映のため再読み込み
+                st.rerun()
 else:
     st.info("登録済みのデータはありません。")
