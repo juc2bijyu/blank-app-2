@@ -39,6 +39,7 @@ def load_data():
 
             df = pd.DataFrame(raw_data)
 
+            # 列名マッピング
             col_map = {}
             for col in df.columns:
                 c_clean = str(col).strip()
@@ -69,6 +70,7 @@ def load_data():
                     .astype(int)
                 )
 
+            # E列「終了」が "OK" なら True に変換
             if "終了" in df.columns:
                 df["完了"] = df["終了"].str.strip() == "OK"
             else:
@@ -77,7 +79,25 @@ def load_data():
             if "日付" not in df.columns:
                 df["日付"] = ""
 
+            # ---------------------------------------------------------
+            # フィルタリング: 「過去の日付 かつ 完了済み」のタスクを除外
+            # ---------------------------------------------------------
+            today = date.today()
+            df["_parsed_date"] = pd.to_datetime(
+                df["日付"], errors="coerce"
+            ).dt.date
+
+            # 「今日より前 かつ チェック済み」を判定
+            is_past_and_completed = (df["_parsed_date"] < today) & (
+                df["完了"] == True
+            )
+
+            # 条件に当てはまらないもの（表示対象）のみ抽出
+            df = df[~is_past_and_completed].copy()
+
+            # ---------------------------------------------------------
             # 日付と〆切時刻の昇順でソート
+            # ---------------------------------------------------------
             if "日付" in df.columns and "〆切時刻" in df.columns:
                 df["_sort_date"] = pd.to_datetime(df["日付"], errors="coerce")
                 df["_sort_time"] = df["〆切時刻"].fillna("")
@@ -86,10 +106,14 @@ def load_data():
                     ascending=[True, True],
                     na_position="last",
                 )
-                df = df.drop(columns=["_sort_date", "_sort_time"]).reset_index(
-                    drop=True
-                )
+                # 一時キーの削除とインデックスのリセット
+                df = df.drop(
+                    columns=["_parsed_date", "_sort_date", "_sort_time"]
+                ).reset_index(drop=True)
+            else:
+                df = df.drop(columns=["_parsed_date"]).reset_index(drop=True)
 
+            # 列の表示順: [完了, 日付, ID, 曜日, 〆切時刻, 内容, 種別]
             cols = ["完了", "日付", "ID", "曜日", "〆切時刻", "内容", "種別"]
             target_cols = [c for c in cols if c in df.columns]
             return df[target_cols]
@@ -105,9 +129,8 @@ def load_data():
 # 1. テンプレートから来週分のタスクを生成するエリア
 # -------------------------------------------------------------
 with st.expander("📅 テンプレートから来週分を一括生成する", expanded=False):
-    # 今日から最も近い「次の日曜日」を初期値に計算
     today = date.today()
-    days_ahead = (6 - today.weekday()) % 7  # 日曜日までの日数
+    days_ahead = (6 - today.weekday()) % 7
     if days_ahead == 0:
         default_sunday = today
     else:
@@ -126,7 +149,6 @@ with st.expander("📅 テンプレートから来週分を一括生成する", 
         )
 
     if generate_clicked:
-        # 選択された日付が本当に日曜日かチェック（月曜=0, ..., 日曜=6）
         if selected_sunday.weekday() != 6:
             st.warning("⚠️ 選択された日付は日曜日ではありません。日曜日を選択してください。")
         else:
@@ -233,4 +255,4 @@ if not df_data.empty:
 
                 st.rerun()
 else:
-    st.info("登録済みのデータはありません。")
+    st.info("表示対象のタスクはありません。")
